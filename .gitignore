@@ -7,3 +7,24 @@ __pycache__/
 *.pyz
 
 logs/
+
+# Documentation folder
+docx/
+
+# Data directories (raw data, not code)
+TarDiff_CrossDomain/data/
+**/raw/
+*.csv
+
+# IDE
+.idea/
+
+# Results and logs
+**/results/
+**/logs/
+
+# Zip files
+*.zip
+
+# Report folder
+Report/

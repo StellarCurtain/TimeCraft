@@ -2,6 +2,7 @@
 # Licensed under the MIT license.
 
 from torch.utils.data import Dataset, DataLoader
+import torch.nn as nn
 import pytorch_lightning as pl
 import numpy as np
 from datetime import datetime
