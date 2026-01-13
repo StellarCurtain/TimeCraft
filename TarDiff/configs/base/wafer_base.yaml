@@ -1,13 +1,13 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 # 
-# Wafer数据配置文件 - 适配TarDiff框架
+# Wafer Dataset Configuration - Adapted for TarDiff Framework
 # 
-# 数据说明:
-#   - 1个通道: 传感器读数
-#   - 序列长度: 24 (从原始152重采样)
-#   - 二分类任务: 晶圆故障检测 (0=正常, 1=异常)
-#   - 特点: 类别不平衡 (异常样本约10-12%)
+# Data description:
+#   - 1 channel: sensor readings
+#   - Sequence length: 24 (resampled from original 152)
+#   - Binary classification: wafer defect detection (0=normal, 1=abnormal)
+#   - Characteristic: class imbalance (abnormal samples ~10-12%)
 
 seq_length: &seqlen 24
 num_channels: &nchannels 1
@@ -64,7 +64,7 @@ model:
         latent_unit: 1
         use_cfg: True
         use_spatial_transformer: True
-        num_classes: 2  # 二分类: 正常/异常
+        num_classes: 2  # Binary: normal/abnormal
 
     first_stage_config:
       target: ldm.models.autoencoder.IdentityFirstStage

@@ -1,15 +1,15 @@
-# NASDAQ 股票数据集配置文件
+# NASDAQ Stock Dataset Configuration
 # ================================
-# 基于 mimic_icustay_base.yaml 修改
+# Based on mimic_icustay_base.yaml
 #
-# 主要修改点:
-#   1. channels: 7 → 5 (OHLCV 5个特征)
-#   2. in_channels/out_channels: 7 → 5
-#   3. num_channels: 7 → 5
-#   4. data_path_dict: 指向 NASDAQ 数据路径
-#   5. max_steps: 20 → 20000 (正式训练)
+# Key modifications:
+#   1. channels: 7 -> 5 (OHLCV 5 features)
+#   2. in_channels/out_channels: 7 -> 5
+#   3. num_channels: 7 -> 5
+#   4. data_path_dict: points to NASDAQ data path
+#   5. max_steps: 20 -> 20000 (full training)
 
-seq_length: &seqlen 24  # 24个交易日
+seq_length: &seqlen 24  # 24 trading days
 
 model:
   base_learning_rate: 5.e-5
@@ -24,7 +24,7 @@ model:
     first_stage_key: "context"
     cond_stage_key: "context"
     image_size: *seqlen
-    channels: 5              # ← 修改: NASDAQ 有 5 个通道 (OHLCV)
+    channels: 5              # NASDAQ has 5 channels (OHLCV)
     cond_stage_trainable: True
     concat_mode: False
     scale_by_std: False
@@ -49,8 +49,8 @@ model:
       params:
         image_size: *seqlen
         dims: 1
-        in_channels: 5       # ← 修改: NASDAQ 通道数
-        out_channels: 5      # ← 修改: NASDAQ 通道数
+        in_channels: 5       # NASDAQ channels
+        out_channels: 5      # NASDAQ channels
         model_channels: 64
         attention_resolutions: [1, 2, 4]
         num_res_blocks: 2
@@ -63,7 +63,7 @@ model:
         latent_unit: 1
         use_cfg: True
         use_spatial_transformer: True
-        num_classes: 2        # 二分类 (涨/跌)
+        num_classes: 2        # Binary classification (up/down)
 
     first_stage_config:
       target: ldm.models.autoencoder.IdentityFirstStage
@@ -74,14 +74,14 @@ model:
         dim: 32
         window: *seqlen
         latent_dim: 32
-        num_channels: 5      # ← 修改: NASDAQ 通道数
+        num_channels: 5      # NASDAQ channels
         use_prototype: False
 
 data:
   target: ldm.data.tsg_dataset.TSClassCondTrainDataModule
   params:
     data_path_dict:
-      NASDAQ_Stock: ../TarDiff_CrossDomain/data/processed/nasdaq/train_tuple.pkl  # 相对于 TarDiff 目录
+      NASDAQ_Stock: ../TarDiff_CrossDomain/data/processed/nasdaq/train_tuple.pkl  # relative to TarDiff directory
     window: *seqlen
     val_portion: 0.1
     batch_size: 256
@@ -105,6 +105,7 @@ lightning:
 
   trainer:
     benchmark: True
-    max_steps: 20000          # ← 修改: 正式训练步数
+    max_steps: 20000          # Full training steps
     grad_watch: False
+
 

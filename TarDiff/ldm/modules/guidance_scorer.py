@@ -61,7 +61,7 @@ class GradDotCalculatorformer:
             K_yy = torch.mm(y_flat, y_flat.t())  # (B2, B2)
             K_xy = torch.mm(x_flat, y_flat.t())  # (B1, B2)
         elif kernel == 'rbf':
-            gamma = 1.0 / x_flat.size(-1)  # 带宽参数
+            gamma = 1.0 / x_flat.size(-1)  # bandwidth parameter
             pairwise_xx = torch.cdist(x_flat, x_flat, p=2)  # (B1, B1)
             K_xx = torch.exp(-gamma * pairwise_xx**2)
             pairwise_yy = torch.cdist(y_flat, y_flat, p=2)  # (B2, B2)

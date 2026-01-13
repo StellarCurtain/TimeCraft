@@ -156,7 +156,7 @@ class TSClassCondTrainDataModule(pl.LightningDataModule):
 
         indices = np.arange(len(data))
         np.random.shuffle(indices)
-        # 按索引打乱 data 和 label
+        # Shuffle data and label by indices
         data = data[indices]
         if label is not None:
             label = label[indices]
