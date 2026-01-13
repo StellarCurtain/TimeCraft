@@ -1,83 +1,62 @@
-## 已完成
-1. conda activate tardiff
-2. cd TarDiff_CrossDomain
-3. 从 Kaggle 下载数据集: https://www.kaggle.com/datasets/jacksoncrow/stock-market-dataset
-4. 解压缩到 TarDiff_CrossDomain/data/raw/NASDAQ
-5. python scripts/explore_nasdaq.py --data_path data/raw/NASDAQ 
-6. python scripts/preprocess_nasdaq.py --input_path data/raw/NASDAQ --output_path data/processed/nasdaq
+# TarDiff Cross-Domain Application - NASDAQ Stock Data
 
----
-
-## 下一步: 训练基础扩散模型
-
-7. 复制配置文件到 TarDiff 目录
-
-
-8. 切换到 TarDiff 目录并开始训练
+## 1. Environment Setup
 ```bash
-cd ..\TarDiff
-python train_main.py --config configs/base/nasdaq_base.yaml --name nasdaq_exp
-
-python train_main.py --base configs/base/nasdaq_base.yaml --name nasdaq_exp --logdir ./outputs
+cd TarDiff
+conda env create -f environment.yaml
+conda activate tardiff
+cd ../TarDiff_CrossDomain
 ```
 
-9. (可选) 查看训练日志
+## 2. Download Data
+Download from Kaggle: https://www.kaggle.com/datasets/jacksoncrow/stock-market-dataset
+Extract to `TarDiff_CrossDomain/data/raw/NASDAQ`
+
+## 3. Data Preprocessing
 ```bash
-tensorboard --logdir logs/nasdaq_exp
+python scripts/preprocess_nasdaq_for_tardiff.py --input_path data/raw/NASDAQ --output_path data/processed/nasdaq --seq_len 24 --pred_horizon 5
 ```
 
----
-
-## 输出记录
+## 4. Train Diffusion Model
+```bash
+cd ../TarDiff
+export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+python train_main.py --base configs/base/nasdaq_base.yaml --name nasdaq_exp --logdir ../TarDiff_CrossDomain/models --max_steps 50000
 ```
-NASDAQ 数据预处理
-======================================================================
-输入路径: data\raw\NASDAQ
-输出路径: data\processed\nasdaq
-序列长度: 24
-预测窗口: 5 天
-采样策略: 非重叠切分 (stride = 24)
-最小日期: 2010-01-01
-最小数据长度: 1000 天
 
-找到 5884 个股票文件
-符合条件的股票: 4668
+## 5. Train Downstream Classifier
+```bash
+python classifier/classifier_train.py --num_classes 1 --rnn_type gru --hidden_dim 256 --train_data ../TarDiff_CrossDomain/data/processed/nasdaq/train_tuple.pkl --val_data ../TarDiff_CrossDomain/data/processed/nasdaq/val_tuple.pkl --ckpt_dir ../TarDiff_CrossDomain/models/nasdaq_base --input_dim 5
+```
 
-生成样本 (非重叠切分)...
-总样本数: 451960
-数据形状: (451960, 5, 24)
-正样本比例: 50.28%
-平均每只股票: 96.8 个样本
+## 6. Compute Gradient Norm Statistics (Analyze class imbalance)
+```bash
+python ../TarDiff_CrossDomain/tools/compute_grad_norm.py \
+    --data_path ../TarDiff_CrossDomain/data/processed/nasdaq/train_tuple.pkl \
+    --model_path ../TarDiff_CrossDomain/models/nasdaq_base/classifier_best.pt \
+    --input_dim 5 --num_classes 2 --max_samples 10000
+```
 
-划分数据集...
-训练集: 361568 样本 (正样本: 50.26%)
-验证集: 45196 样本 (正样本: 50.38%)
-测试集: 45196 样本 (正样本: 50.26%)
+## 7. Create Data Subset (Optional, to reduce generation time)
+```bash
+python ../TarDiff_CrossDomain/tools/create_subset.py --ratio 0.5 --input ../TarDiff_CrossDomain/data/processed/nasdaq/train_tuple.pkl --output ../TarDiff_CrossDomain/data/processed/nasdaq/train_tuple_50.pkl
+```
 
-保存数据...
-  保存: data\processed\nasdaq\train_tuple.pkl
-  保存: data\processed\nasdaq\val_tuple.pkl
-  保存: data\processed\nasdaq\test_tuple.pkl
-  保存: data\processed\nasdaq\meta.pkl
+## 8. Generate Samples with Influence Guidance
+```bash
+for alpha in 0.5 0.25 0.1 0; do
+    python guidance_generation.py --base configs/base/nasdaq_base.yaml --gen_ckpt_path ../TarDiff_CrossDomain/models/nasdaq_base/nasdaq_exp_24_nl_16_lr5.0e-05_bs256_ms50k_centered_pit_seed23/checkpoints/last.ckpt --downstream_pth_path ../TarDiff_CrossDomain/models/nasdaq_base/classifier_best.pt --origin_data_path ../TarDiff_CrossDomain/data/processed/nasdaq/train_tuple_50.pkl --save_path ../TarDiff_CrossDomain/data/processed/nasdaq --input_dim 5 --num_latents 1 --alpha $alpha
+done
+```
 
-======================================================================
-  形状: (5, 24) (通道数, 时间步)
-  各通道数据:
-    Open  : [1.68, 1.70, ... , 1.68, 1.67]
-    High  : [1.70, 1.70, ... , 1.71, 1.74]
-    Low   : [1.66, 1.68, ... , 1.68, 1.65]
-    Close : [1.67, 1.68, ... , 1.71, 1.74]
-    Volume: [35100.00, 2000.00, ... , 700.00, 19800.00]
+## 9. Evaluate Generation Quality
+```bash
+chmod +x ../TarDiff_CrossDomain/evaluation/run_quality_evaluation.sh
+for alpha in 0.5 0.25 0.1 0; do ../TarDiff_CrossDomain/evaluation/run_quality_evaluation.sh nasdaq 50 $alpha; done
+```
 
-样本 1:
-  标签: 1 (上涨)
-  形状: (5, 24) (通道数, 时间步)
-  各通道数据:
-    Open  : [23.93, 24.61, ... , 22.87, 22.91]
-    High  : [24.57, 24.63, ... , 22.92, 23.10]
-    Low   : [23.93, 23.85, ... , 22.75, 22.78]
-    Close : [24.40, 23.93, ... , 22.91, 22.90]
-    Volume: [18800.00, 25900.00, ... , 7500.00, 9700.00]
-
-下一步: 配置 TarDiff 并开始训练
+## 10. Run Downstream Task Experiments
+```bash
+chmod +x ../TarDiff_CrossDomain/evaluation/run_evaluation.sh
+for alpha in 0.5 0.25 0.1 0; do ../TarDiff_CrossDomain/evaluation/run_evaluation.sh nasdaq 50 $alpha; done
 ```
