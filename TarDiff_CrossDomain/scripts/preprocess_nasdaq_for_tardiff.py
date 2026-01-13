@@ -6,12 +6,9 @@ Preprocess NASDAQ stock data for TarDiff framework.
 Input: Raw CSV stock data (Date, Open, High, Low, Close, Adj Close, Volume)
 Output: pickle tuple (data, labels) where data.shape=(N, C, T), labels.shape=(N,)
 
-Usage:
-    # Standard binary classification (up/down)
-    python preprocess_nasdaq_for_tardiff.py --input_path data/raw/NASDAQ --output_path data/processed/nasdaq
-    
-    # Three-class classification (significant gain=1, neutral=0, significant loss=-1)
-    python preprocess_nasdaq_for_tardiff.py --input_path data/raw/NASDAQ --output_path data/processed/nasdaq_extreme --label_mode extreme --extreme_percentile 5
+Usage (run from TarDiff directory):
+    python ../TarDiff_CrossDomain/scripts/preprocess_nasdaq_for_tardiff.py --input_path ../TarDiff_CrossDomain/data/raw/NASDAQ --output_path ../TarDiff_CrossDomain/data/processed/nasdaq
+    python ../TarDiff_CrossDomain/scripts/preprocess_nasdaq_for_tardiff.py --input_path ../TarDiff_CrossDomain/data/raw/NASDAQ --output_path ../TarDiff_CrossDomain/data/processed/nasdaq_extreme --label_mode extreme --extreme_percentile 5
 """
 
 import os

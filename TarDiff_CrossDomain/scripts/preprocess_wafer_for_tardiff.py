@@ -10,8 +10,8 @@ Source: UCR Time Series Classification Archive
 
 Output: pickle tuple (data, labels) where data.shape=(N, 1, T), labels.shape=(N,)
 
-Usage:
-    python preprocess_wafer_for_tardiff.py --input_path data/raw/Wafer --output_path data/processed/wafer --seq_len 24
+Usage (run from TarDiff directory):
+    python ../TarDiff_CrossDomain/scripts/preprocess_wafer_for_tardiff.py --input_path ../TarDiff_CrossDomain/data/raw/Wafer --output_path ../TarDiff_CrossDomain/data/processed/wafer --seq_len 24
 """
 
 import os

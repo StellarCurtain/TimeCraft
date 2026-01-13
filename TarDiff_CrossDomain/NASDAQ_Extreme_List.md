@@ -5,7 +5,6 @@
 cd TarDiff
 conda env create -f environment.yaml
 conda activate tardiff
-cd ../TarDiff_CrossDomain
 ```
 
 ## 2. Download Data
@@ -14,12 +13,11 @@ Extract to `TarDiff_CrossDomain/data/raw/NASDAQ`
 
 ## 3. Data Preprocessing (Three-class: Loss/Neutral/Gain)
 ```bash
-python scripts/preprocess_nasdaq_for_tardiff.py --input_path data/raw/NASDAQ --output_path data/processed/nasdaq_extreme --seq_len 24 --pred_horizon 5 --label_mode extreme --extreme_percentile 5
+python ../TarDiff_CrossDomain/scripts/preprocess_nasdaq_for_tardiff.py --input_path ../TarDiff_CrossDomain/data/raw/NASDAQ --output_path ../TarDiff_CrossDomain/data/processed/nasdaq_extreme --seq_len 24 --pred_horizon 5 --label_mode extreme --extreme_percentile 5
 ```
 
 ## 4. Train Diffusion Model
 ```bash
-cd ../TarDiff
 export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
 python train_main.py --base configs/base/nasdaq_extreme_base.yaml --name nasdaq_extreme_exp --logdir ../TarDiff_CrossDomain/models --max_steps 50000
 ```

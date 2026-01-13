@@ -5,7 +5,6 @@
 cd TarDiff
 conda env create -f environment.yaml
 conda activate tardiff
-cd ../TarDiff_CrossDomain
 ```
 
 ## 2. Download Data
@@ -14,12 +13,11 @@ Extract to `TarDiff_CrossDomain/data/raw/Wafer`
 
 ## 3. Data Preprocessing
 ```bash
-python scripts/preprocess_wafer_for_tardiff.py --input_path data/raw/Wafer --output_path data/processed/wafer --seq_len 24 --val_ratio 0.1
+python ../TarDiff_CrossDomain/scripts/preprocess_wafer_for_tardiff.py --input_path ../TarDiff_CrossDomain/data/raw/Wafer --output_path ../TarDiff_CrossDomain/data/processed/wafer --seq_len 24 --val_ratio 0.1
 ```
 
 ## 4. Train Diffusion Model
 ```bash
-cd ../TarDiff
 export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
 python train_main.py --base configs/base/wafer_base.yaml --name wafer_exp --logdir ../TarDiff_CrossDomain/models --max_steps 20000
 ```
