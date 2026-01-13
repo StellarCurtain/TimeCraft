@@ -63,6 +63,8 @@ def compute_label(df: pd.DataFrame, idx: int, seq_len: int, pred_horizon: int) -
         return None
     current_close = df.iloc[end_idx]['Close']
     future_close = df.iloc[future_idx]['Close']
+    if np.isnan(current_close) or np.isnan(future_close):
+        return None
     return 1 if future_close > current_close else 0
 
 
@@ -74,7 +76,7 @@ def compute_return(df: pd.DataFrame, idx: int, seq_len: int, pred_horizon: int) 
         return None
     current_close = df.iloc[end_idx]['Close']
     future_close = df.iloc[future_idx]['Close']
-    if current_close == 0:
+    if current_close == 0 or np.isnan(current_close) or np.isnan(future_close):
         return None
     return (future_close - current_close) / current_close
 
@@ -98,14 +100,16 @@ def compute_extreme_label(return_rate: float, gain_threshold: float, loss_thresh
 
 
 def extract_sequences(df: pd.DataFrame, channels: List[str], seq_len: int, 
-                      pred_horizon: int, stride: int = 1, use_returns: bool = False) -> Tuple[np.ndarray, np.ndarray]:
-    """Extract sequences with binary labels."""
+                      pred_horizon: int, stride: int = 1, use_returns: bool = False) -> Tuple[np.ndarray, np.ndarray, int]:
+    """Extract sequences with binary labels. Returns (sequences, labels, skipped_count)."""
     sequences, labels = [], []
+    skipped = 0
     
     for idx in range(0, len(df) - seq_len - pred_horizon + 1, stride):
         seq_data = df.iloc[idx:idx + seq_len][channels].values
         label = compute_label(df, idx, seq_len, pred_horizon)
         if label is None or np.isnan(seq_data).any():
+            skipped += 1
             continue
         
         if use_returns:
@@ -116,20 +120,23 @@ def extract_sequences(df: pd.DataFrame, channels: List[str], seq_len: int,
         labels.append(label)
     
     if len(sequences) == 0:
-        return None, None
-    return np.array(sequences), np.array(labels)
+        return None, None, skipped
+    return np.array(sequences), np.array(labels), skipped
 
 
 def extract_sequences_with_returns(df: pd.DataFrame, channels: List[str], seq_len: int, 
                                    pred_horizon: int, stride: int = 1, 
-                                   use_returns: bool = False) -> Tuple[np.ndarray, np.ndarray]:
-    """Extract sequences with return rates for extreme labeling."""
+                                   use_returns: bool = False,
+                                   max_return: float = 0.5) -> Tuple[np.ndarray, np.ndarray, int]:
+    """Extract sequences with return rates for extreme labeling. Returns (sequences, returns, skipped_count)."""
     sequences, return_rates = [], []
+    skipped = 0
     
     for idx in range(0, len(df) - seq_len - pred_horizon + 1, stride):
         seq_data = df.iloc[idx:idx + seq_len][channels].values
         ret = compute_return(df, idx, seq_len, pred_horizon)
-        if ret is None or np.isnan(seq_data).any():
+        if ret is None or np.isnan(seq_data).any() or abs(ret) > max_return:
+            skipped += 1
             continue
         
         if use_returns:
@@ -140,8 +147,8 @@ def extract_sequences_with_returns(df: pd.DataFrame, channels: List[str], seq_le
         return_rates.append(ret)
     
     if len(sequences) == 0:
-        return None, None
-    return np.array(sequences), np.array(return_rates)
+        return None, None, skipped
+    return np.array(sequences), np.array(return_rates), skipped
 
 
 def split_dataset(data: np.ndarray, labels: np.ndarray, train_ratio: float = 0.8,
@@ -206,6 +213,7 @@ def main():
     
     all_sequences, all_returns = [], []
     valid_stocks = 0
+    total_skipped = 0
     
     for stock_file in tqdm(stock_files, desc="Processing"):
         df = load_stock_data(str(stock_file), args.min_date)
@@ -215,21 +223,24 @@ def main():
             continue
         
         if args.label_mode == 'binary':
-            sequences, labels = extract_sequences(df, channels, args.seq_len, args.pred_horizon,
+            sequences, labels, skipped = extract_sequences(df, channels, args.seq_len, args.pred_horizon,
                                                   stride=args.seq_len, use_returns=args.use_returns)
             if sequences is not None and len(sequences) > 0:
                 all_sequences.append(sequences)
                 all_returns.append(labels)
                 valid_stocks += 1
+                total_skipped += skipped
         else:
-            sequences, returns = extract_sequences_with_returns(df, channels, args.seq_len, args.pred_horizon,
+            sequences, returns, skipped = extract_sequences_with_returns(df, channels, args.seq_len, args.pred_horizon,
                                                                 stride=args.seq_len, use_returns=args.use_returns)
             if sequences is not None and len(sequences) > 0:
                 all_sequences.append(sequences)
                 all_returns.append(returns)
                 valid_stocks += 1
+                total_skipped += skipped
     
     print(f"\nValid stocks: {valid_stocks}")
+    print(f"Skipped samples (NaN/invalid): {total_skipped}")
     
     if len(all_sequences) == 0:
         print("Error: No valid samples!")

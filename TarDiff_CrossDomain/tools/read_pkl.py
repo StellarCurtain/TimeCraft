@@ -2,9 +2,9 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 """
-读取和检查 pickle 文件的工具
+Tool for reading and inspecting pickle files.
 
-Usage: python tools/read_pkl.py <pkl_file_path> --verbose -n 5
+Usage: python ../TarDiff_CrossDomain/tools/read_pkl.py <pkl_file_path> --verbose -n 5
 """
 
 import os
@@ -18,14 +18,14 @@ from typing import Any, Tuple
 
 def load_pkl(file_path: str) -> Any:
     if not os.path.exists(file_path):
-        raise FileNotFoundError(f"文件不存在: {file_path}")
+        raise FileNotFoundError(f"File not found: {file_path}")
     with open(file_path, 'rb') as f:
         return pickle.load(f)
 
 
 def analyze_tuple_data(data: Tuple[np.ndarray, np.ndarray], verbose: bool = False) -> dict:
     if not isinstance(data, tuple) or len(data) != 2:
-        raise ValueError(f"期望 (data, labels) 元组，但得到: {type(data)}")
+        raise ValueError(f"Expected (data, labels) tuple, got: {type(data)}")
     
     data_array, labels = data[0], data[1]
     
@@ -105,67 +105,67 @@ def analyze_data(data: Any, verbose: bool = False) -> dict:
 
 def print_analysis(info: dict, file_path: str, verbose: bool = False, num_samples: int = 0, data: Any = None):
     print("=" * 80)
-    print(f"Pickle 文件分析: {file_path}")
+    print(f"Pickle file analysis: {file_path}")
     print("=" * 80)
     
     if info['type'] == 'tuple':
-        print(f"样本数量: {info['n_samples']:,}, 数据形状: {info['data_shape']}, 类型: {info['data_dtype']}")
+        print(f"Samples: {info['n_samples']:,}, Shape: {info['data_shape']}, Dtype: {info['data_dtype']}")
         
         if 'n_classes' in info:
-            print(f"类别数: {info['n_classes']}, 唯一标签值: {info['unique_labels']}")
-            print("标签分布:")
+            print(f"Classes: {info['n_classes']}, Unique labels: {info['unique_labels']}")
+            print("Label distribution:")
             for label in sorted(info['label_distribution'].keys()):
-                print(f"  类别 {label}: {info['label_distribution'][label]:,} ({info['label_percent'][label]:.2f}%)")
+                print(f"  Class {label}: {info['label_distribution'][label]:,} ({info['label_percent'][label]:.2f}%)")
             
             if info.get('has_nan_labels'):
-                print(f"⚠️ 标签中包含 NaN 值 ({info['nan_count']} 个)")
+                print(f"Warning: Labels contain NaN values ({info['nan_count']})")
             if info.get('has_nan_data'):
-                print(f"⚠️ 数据中包含 NaN 值 ({info['nan_data_count']} 个)")
+                print(f"Warning: Data contains NaN values ({info['nan_data_count']})")
             
             if verbose:
-                print(f"数据统计: min={info['data_min']:.4f}, max={info['data_max']:.4f}, mean={info['data_mean']:.4f}, std={info['data_std']:.4f}")
+                print(f"Data stats: min={info['data_min']:.4f}, max={info['data_max']:.4f}, mean={info['data_mean']:.4f}, std={info['data_std']:.4f}")
         
         if info['n_classes'] == 1:
-            print("⚠️ 警告: 数据中只有1个类别！建议检查数据预处理过程。")
+            print("Warning: Only 1 class in data! Check preprocessing.")
     
     elif info['type'] == 'dict':
-        print(f"键列表: {info['keys']}")
+        print(f"Keys: {info['keys']}")
         for key in info['keys']:
             if f'{key}_shape' in info:
-                line = f"  {key}: 形状={info[f'{key}_shape']}, 类型={info[f'{key}_dtype']}"
+                line = f"  {key}: shape={info[f'{key}_shape']}, dtype={info[f'{key}_dtype']}"
                 if verbose and f'{key}_mean' in info:
                     line += f", mean={info[f'{key}_mean']:.4f}"
                 print(line)
     
     elif info['type'] == 'array':
-        print(f"形状: {info['shape']}, 类型: {info['dtype']}")
+        print(f"Shape: {info['shape']}, Dtype: {info['dtype']}")
         print(f"min={info['min']:.4f}, max={info['max']:.4f}, mean={info['mean']:.4f}, std={info['std']:.4f}")
     
     else:
-        print(f"数据类型: {info['type']}, 预览: {info.get('str_repr', 'N/A')}")
+        print(f"Type: {info['type']}, Preview: {info.get('str_repr', 'N/A')}")
     
     if num_samples > 0 and data is not None and isinstance(data, tuple) and len(data) == 2:
-        print(f"\n前 {num_samples} 条数据样本:")
+        print(f"\nFirst {num_samples} samples:")
         print("-" * 80)
         data_array, labels = data[0], data[1]
         for i in range(min(num_samples, len(data_array))):
             sample = data_array[i]
-            print(f"样本 {i+1}: 标签={labels[i]}, 形状={sample.shape}")
+            print(f"Sample {i+1}: label={labels[i]}, shape={sample.shape}")
             if len(sample.shape) == 2:
                 for c in range(min(sample.shape[0], 5)):
                     ch = sample[c]
                     preview = f"[{', '.join(f'{v:.4f}' for v in ch[:4])}, ..., {', '.join(f'{v:.4f}' for v in ch[-4:])}]" if len(ch) > 8 else f"[{', '.join(f'{v:.4f}' for v in ch)}]"
-                    print(f"  通道{c}: {preview}")
+                    print(f"  Channel {c}: {preview}")
         print("-" * 80)
     
     print("=" * 80)
 
 
 def main():
-    parser = argparse.ArgumentParser(description='读取和检查 pickle 文件')
-    parser.add_argument('pkl_file', type=str, help='pickle 文件路径')
-    parser.add_argument('--verbose', action='store_true', help='显示详细统计')
-    parser.add_argument('-n', '--num_samples', type=int, default=0, help='显示前N条样本')
+    parser = argparse.ArgumentParser(description='Read and inspect pickle files')
+    parser.add_argument('pkl_file', type=str, help='Pickle file path')
+    parser.add_argument('--verbose', action='store_true', help='Show detailed stats')
+    parser.add_argument('-n', '--num_samples', type=int, default=0, help='Show first N samples')
     args = parser.parse_args()
     
     pkl_path = Path(args.pkl_file)
@@ -179,15 +179,15 @@ def main():
     pkl_path = pkl_path.resolve()
     
     try:
-        print(f"正在加载: {pkl_path}")
+        print(f"Loading: {pkl_path}")
         data = load_pkl(str(pkl_path))
         info = analyze_data(data, args.verbose)
         print_analysis(info, str(pkl_path), args.verbose, args.num_samples, data)
     except FileNotFoundError as e:
-        print(f"错误: {e}")
+        print(f"Error: {e}")
         sys.exit(1)
     except Exception as e:
-        print(f"错误: {e}")
+        print(f"Error: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
