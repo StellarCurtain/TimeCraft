@@ -106,7 +106,7 @@ lightning:
   trainer:
     benchmark: True
     max_steps: 20000          # Full training steps
-    gpus: 0,
+    gpus: 0,1,2,3,
     grad_watch: False
 
 
