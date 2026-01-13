@@ -7,7 +7,11 @@ Input: Raw CSV stock data (Date, Open, High, Low, Close, Adj Close, Volume)
 Output: pickle tuple (data, labels) where data.shape=(N, C, T), labels.shape=(N,)
 
 Usage:
-    python preprocess_nasdaq_for_tardiff.py --input_path data/raw/NASDAQ --output_path data/processed/nasdaq --seq_len 24 --pred_horizon 5
+    # Standard binary classification (up/down)
+    python preprocess_nasdaq_for_tardiff.py --input_path data/raw/NASDAQ --output_path data/processed/nasdaq
+    
+    # Three-class classification (significant gain=1, neutral=0, significant loss=-1)
+    python preprocess_nasdaq_for_tardiff.py --input_path data/raw/NASDAQ --output_path data/processed/nasdaq_extreme --label_mode extreme --extreme_percentile 5
 """
 
 import os
@@ -31,8 +35,13 @@ def parse_args():
     parser.add_argument('--train_ratio', type=float, default=0.8, help='Train ratio (default: 0.8)')
     parser.add_argument('--val_ratio', type=float, default=0.1, help='Validation ratio (default: 0.1)')
     parser.add_argument('--channels', type=str, default='Open,High,Low,Close,Volume', help='Channels to use')
-    parser.add_argument('--normalize_per_stock', action='store_true', help='Normalize per stock')
     parser.add_argument('--use_returns', action='store_true', help='Use returns instead of prices')
+    # Label mode
+    parser.add_argument('--label_mode', type=str, default='binary', 
+                        choices=['binary', 'extreme'],
+                        help='Label mode: binary (up/down), extreme (3-class: gain/neutral/loss)')
+    parser.add_argument('--extreme_percentile', type=float, default=5.0,
+                        help='Percentile for extreme events (default: 5 means top/bottom 5%%)')
     return parser.parse_args()
 
 
@@ -50,7 +59,7 @@ def load_stock_data(file_path: str, min_date: str = None) -> pd.DataFrame:
 
 
 def compute_label(df: pd.DataFrame, idx: int, seq_len: int, pred_horizon: int) -> int:
-    """Compute label: 1 if price goes up in pred_horizon days, 0 otherwise."""
+    """Compute binary label: 1 if price goes up, 0 otherwise."""
     end_idx = idx + seq_len - 1
     future_idx = end_idx + pred_horizon
     if future_idx >= len(df):
@@ -60,9 +69,40 @@ def compute_label(df: pd.DataFrame, idx: int, seq_len: int, pred_horizon: int) -
     return 1 if future_close > current_close else 0
 
 
+def compute_return(df: pd.DataFrame, idx: int, seq_len: int, pred_horizon: int) -> float:
+    """Compute return rate for the prediction horizon."""
+    end_idx = idx + seq_len - 1
+    future_idx = end_idx + pred_horizon
+    if future_idx >= len(df):
+        return None
+    current_close = df.iloc[end_idx]['Close']
+    future_close = df.iloc[future_idx]['Close']
+    if current_close == 0:
+        return None
+    return (future_close - current_close) / current_close
+
+
+def compute_extreme_label(return_rate: float, gain_threshold: float, loss_threshold: float) -> int:
+    """
+    Compute three-class label based on return rate.
+    Returns:
+        1: significant gain (return >= gain_threshold)
+        0: neutral (in between)
+        -1: significant loss (return <= loss_threshold)
+    """
+    if return_rate is None:
+        return None
+    if return_rate >= gain_threshold:
+        return 1
+    elif return_rate <= loss_threshold:
+        return -1
+    else:
+        return 0
+
+
 def extract_sequences(df: pd.DataFrame, channels: List[str], seq_len: int, 
                       pred_horizon: int, stride: int = 1, use_returns: bool = False) -> Tuple[np.ndarray, np.ndarray]:
-    """Extract sequences from stock data. Returns data (N, C, T) and labels (N,)."""
+    """Extract sequences with binary labels."""
     sequences, labels = [], []
     
     for idx in range(0, len(df) - seq_len - pred_horizon + 1, stride):
@@ -83,22 +123,28 @@ def extract_sequences(df: pd.DataFrame, channels: List[str], seq_len: int,
     return np.array(sequences), np.array(labels)
 
 
-def normalize_data(data: np.ndarray, method: str = 'zscore') -> Tuple[np.ndarray, Dict]:
-    """Normalize data. TarDiff will do its own normalization (centered_pit)."""
-    stats = {}
-    if method == 'zscore':
-        mean = np.nanmean(data, axis=(0, 2), keepdims=True)
-        std = np.nanstd(data, axis=(0, 2), keepdims=True)
-        normalized = (data - mean) / (std + 1e-8)
-        stats['mean'], stats['std'] = mean, std
-    elif method == 'minmax':
-        min_val = np.nanmin(data, axis=(0, 2), keepdims=True)
-        max_val = np.nanmax(data, axis=(0, 2), keepdims=True)
-        normalized = (data - min_val) / (max_val - min_val + 1e-8)
-        stats['min'], stats['max'] = min_val, max_val
-    else:
-        normalized = data
-    return normalized, stats
+def extract_sequences_with_returns(df: pd.DataFrame, channels: List[str], seq_len: int, 
+                                   pred_horizon: int, stride: int = 1, 
+                                   use_returns: bool = False) -> Tuple[np.ndarray, np.ndarray]:
+    """Extract sequences with return rates for extreme labeling."""
+    sequences, return_rates = [], []
+    
+    for idx in range(0, len(df) - seq_len - pred_horizon + 1, stride):
+        seq_data = df.iloc[idx:idx + seq_len][channels].values
+        ret = compute_return(df, idx, seq_len, pred_horizon)
+        if ret is None or np.isnan(seq_data).any():
+            continue
+        
+        if use_returns:
+            seq_data = np.diff(seq_data, axis=0) / (seq_data[:-1] + 1e-8)
+            seq_data = np.vstack([np.zeros((1, seq_data.shape[1])), seq_data])
+        
+        sequences.append(seq_data.T)
+        return_rates.append(ret)
+    
+    if len(sequences) == 0:
+        return None, None
+    return np.array(sequences), np.array(return_rates)
 
 
 def split_dataset(data: np.ndarray, labels: np.ndarray, train_ratio: float = 0.8,
@@ -121,7 +167,7 @@ def split_dataset(data: np.ndarray, labels: np.ndarray, train_ratio: float = 0.8
 
 
 def save_dataset(data_dict: Dict[str, Tuple[np.ndarray, np.ndarray]], output_path: str, stats: Dict = None):
-    """Save dataset in TarDiff format: train_tuple.pkl, val_tuple.pkl, test_tuple.pkl."""
+    """Save dataset in TarDiff format."""
     os.makedirs(output_path, exist_ok=True)
     
     for split_name, (data, labels) in data_dict.items():
@@ -130,7 +176,9 @@ def save_dataset(data_dict: Dict[str, Tuple[np.ndarray, np.ndarray]], output_pat
         with open(file_path, 'wb') as f:
             pickle.dump((data, labels), f)
         print(f"  Saved: {file_path}")
-        print(f"    Shape: {data.shape}, Labels: {labels.shape}, Pos ratio: {labels.mean()*100:.2f}%")
+        unique_labels, counts = np.unique(labels, return_counts=True)
+        label_dist = {int(l): int(c) for l, c in zip(unique_labels, counts)}
+        print(f"    Shape: {data.shape}, Distribution: {label_dist}")
     
     if stats:
         meta_path = os.path.join(output_path, 'meta.pkl')
@@ -148,7 +196,9 @@ def main():
     print(f"Input: {args.input_path}")
     print(f"Output: {args.output_path}")
     print(f"Seq length: {args.seq_len}, Pred horizon: {args.pred_horizon}")
-    print(f"Channels: {args.channels}")
+    print(f"Label mode: {args.label_mode}")
+    if args.label_mode == 'extreme':
+        print(f"Extreme percentile: {args.extreme_percentile}%")
     print()
     
     channels = [c.strip() for c in args.channels.split(',')]
@@ -157,7 +207,7 @@ def main():
     stock_files = list(Path(stocks_path).glob('*.csv'))
     print(f"Found {len(stock_files)} stock files")
     
-    all_sequences, all_labels = [], []
+    all_sequences, all_returns = [], []
     valid_stocks = 0
     
     for stock_file in tqdm(stock_files, desc="Processing"):
@@ -167,12 +217,20 @@ def main():
         if not all(col in df.columns for col in channels):
             continue
         
-        sequences, labels = extract_sequences(df, channels, args.seq_len, args.pred_horizon,
-                                              stride=args.seq_len, use_returns=args.use_returns)
-        if sequences is not None and len(sequences) > 0:
-            all_sequences.append(sequences)
-            all_labels.append(labels)
-            valid_stocks += 1
+        if args.label_mode == 'binary':
+            sequences, labels = extract_sequences(df, channels, args.seq_len, args.pred_horizon,
+                                                  stride=args.seq_len, use_returns=args.use_returns)
+            if sequences is not None and len(sequences) > 0:
+                all_sequences.append(sequences)
+                all_returns.append(labels)
+                valid_stocks += 1
+        else:
+            sequences, returns = extract_sequences_with_returns(df, channels, args.seq_len, args.pred_horizon,
+                                                                stride=args.seq_len, use_returns=args.use_returns)
+            if sequences is not None and len(sequences) > 0:
+                all_sequences.append(sequences)
+                all_returns.append(returns)
+                valid_stocks += 1
     
     print(f"\nValid stocks: {valid_stocks}")
     
@@ -181,21 +239,53 @@ def main():
         return
     
     data = np.concatenate(all_sequences, axis=0)
-    labels = np.concatenate(all_labels, axis=0)
+    returns_or_labels = np.concatenate(all_returns, axis=0)
     
     print(f"\nTotal samples: {len(data)}")
-    print(f"Shape: {data.shape} (samples, channels, timesteps)")
-    print(f"Positive ratio: {labels.mean()*100:.2f}%")
+    print(f"Shape: {data.shape}")
     
-    stats = {
-        'channels': channels, 'n_channels': len(channels), 'seq_len': args.seq_len,
-        'pred_horizon': args.pred_horizon, 'n_samples': len(data), 'pos_ratio': float(labels.mean())
-    }
+    if args.label_mode == 'binary':
+        labels = returns_or_labels
+        print(f"Positive ratio: {labels.mean()*100:.2f}%")
+        stats = {
+            'channels': channels, 'n_channels': len(channels), 'seq_len': args.seq_len,
+            'pred_horizon': args.pred_horizon, 'n_samples': len(data), 
+            'label_mode': 'binary', 'n_classes': 2
+        }
+    else:
+        # Extreme mode: compute thresholds
+        returns = returns_or_labels
+        gain_threshold = np.percentile(returns, 100 - args.extreme_percentile)
+        loss_threshold = np.percentile(returns, args.extreme_percentile)
+        
+        print(f"\nReturn statistics: mean={returns.mean()*100:.2f}%, std={returns.std()*100:.2f}%")
+        print(f"Thresholds: gain >= {gain_threshold*100:.2f}%, loss <= {loss_threshold*100:.2f}%")
+        
+        # Compute labels
+        labels = np.array([compute_extreme_label(r, gain_threshold, loss_threshold) for r in returns])
+        
+        # Remap: -1 -> 0, 0 -> 1, 1 -> 2 (for TarDiff compatibility)
+        labels = labels + 1  # Now: loss=0, neutral=1, gain=2
+        
+        n_loss = (labels == 0).sum()
+        n_neutral = (labels == 1).sum()
+        n_gain = (labels == 2).sum()
+        print(f"\nLabel distribution:")
+        print(f"  Loss (0): {n_loss} ({n_loss/len(labels)*100:.2f}%)")
+        print(f"  Neutral (1): {n_neutral} ({n_neutral/len(labels)*100:.2f}%)")
+        print(f"  Gain (2): {n_gain} ({n_gain/len(labels)*100:.2f}%)")
+        
+        stats = {
+            'channels': channels, 'n_channels': len(channels), 'seq_len': args.seq_len,
+            'pred_horizon': args.pred_horizon, 'n_samples': len(data),
+            'label_mode': 'extreme', 'n_classes': 3,
+            'gain_threshold': float(gain_threshold),
+            'loss_threshold': float(loss_threshold),
+            'extreme_percentile': args.extreme_percentile
+        }
     
     print("\nSplitting dataset...")
     data_splits = split_dataset(data, labels, args.train_ratio, args.val_ratio)
-    for split_name, (split_data, split_labels) in data_splits.items():
-        print(f"  {split_name}: {len(split_data)} samples (pos: {split_labels.mean()*100:.2f}%)")
     
     print("\nSaving...")
     save_dataset(data_splits, args.output_path, stats)
@@ -206,7 +296,7 @@ def main():
     print(f"  Saved guidance: {guidance_path}")
     
     print("\n" + "=" * 70)
-    print(f"Done! Shape: ({len(channels)}, {args.seq_len})")
+    print("Done!")
     print("=" * 70)
 
 
