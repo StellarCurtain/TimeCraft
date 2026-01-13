@@ -24,20 +24,13 @@ class TSClassCondDataset(
         self.data_dict = data_dict
         self.data_key, self.data = next(iter(self.data_dict.items()))
         self.total_items = len(self.data[0])
-        self.pos_indices = np.where(self.data[1] == 1)[0]
-        self.neg_indices = np.where(self.data[1] == 0)[0]
 
     def __len__(self):
         return self.total_items  # self.num_slices
 
     def __getitem__(self, idx):
-        if idx % 2 == 0:
-            sample_idx = np.random.choice(self.pos_indices)
-        else:
-            sample_idx = np.random.choice(self.neg_indices)
-        sample_idx = idx
-        context = self.data[0][sample_idx]
-        label = self.data[1][sample_idx]
+        context = self.data[0][idx]
+        label = self.data[1][idx]
 
         return {
             'context': context,  # shape: (window,)
