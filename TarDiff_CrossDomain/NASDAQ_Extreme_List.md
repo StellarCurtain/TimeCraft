@@ -43,7 +43,7 @@ python ../TarDiff_CrossDomain/tools/create_subset.py --ratio 0.5 --input ../TarD
 ## 8. Generate Samples with Influence Guidance
 ```bash
 for alpha in 0.5 0.25 0.1 0; do
-    python guidance_generation.py --base configs/base/nasdaq_extreme_base.yaml --gen_ckpt_path ../TarDiff_CrossDomain/models/nasdaq_extreme_base/nasdaq_extreme_exp_24_nl_16_lr5.0e-05_bs256_ms50k_centered_pit_seed23/checkpoints/last.ckpt --downstream_pth_path ../TarDiff_CrossDomain/models/nasdaq_extreme_base/classifier_best.pt --origin_data_path ../TarDiff_CrossDomain/data/processed/nasdaq_extreme/train_tuple_50.pkl --save_path ../TarDiff_CrossDomain/data/processed/nasdaq_extreme --input_dim 5 --num_latents 1 --alpha $alpha
+    python guidance_generation.py --base configs/base/nasdaq_extreme_base.yaml --gen_ckpt_path ../TarDiff_CrossDomain/models/nasdaq_extreme_base/nasdaq_extreme_exp_24_nl_16_lr5.0e-05_bs256_ms50k_centered_pit_seed23/checkpoints/last.ckpt --downstream_pth_path ../TarDiff_CrossDomain/models/nasdaq_extreme_base/classifier_best.pt --origin_data_path ../TarDiff_CrossDomain/data/processed/nasdaq_extreme/train_tuple_50.pkl --save_path ../TarDiff_CrossDomain/data/processed/nasdaq_extreme --input_dim 5 --num_latents 1 --num_classes 3 --alpha $alpha
 done
 ```
 

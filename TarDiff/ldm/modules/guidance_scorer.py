@@ -407,7 +407,11 @@ class GradDotCalculator:
         for inputs, labels in tqdm(train_loader,
                                    desc="Compute Train Grad Sum"):
             inputs = inputs.to(self.device)
-            labels = labels.to(self.device).to(torch.float32)
+            # BCEWithLogitsLoss needs float labels, CrossEntropyLoss needs long
+            if isinstance(self.criterion, nn.BCEWithLogitsLoss):
+                labels = labels.to(self.device).to(torch.float32)
+            else:
+                labels = labels.to(self.device).to(torch.long)
             outputs = self.model(inputs)
             loss = self.criterion(outputs, labels)
             total_loss += loss
@@ -447,7 +451,11 @@ class GradDotCalculator:
         test_sample = test_sample.transpose(2, 1).to(self.device)
         test_sample.requires_grad_(True)
 
-        test_label = test_label.to(self.device).to(torch.float32)
+        # BCEWithLogitsLoss needs float labels, CrossEntropyLoss needs long
+        if isinstance(self.criterion, nn.BCEWithLogitsLoss):
+            test_label = test_label.to(self.device).to(torch.float32)
+        else:
+            test_label = test_label.to(self.device).to(torch.long)
 
         with torch.backends.cudnn.flags(enabled=False):
             test_output = self.model(test_sample)

@@ -21,7 +21,7 @@ from pytorch_lightning.utilities import rank_zero_info
 from utils.callback_utils import prepare_trainer_configs
 from ldm.util import instantiate_from_config
 from pathlib import Path
-import matplotlib.pyplot as plt6
+import matplotlib.pyplot as plt
 import pandas as pd
 from ldm.modules.guidance_scorer import GradDotCalculator
 import torch.nn as nn
@@ -315,6 +315,18 @@ def get_parser(**parser_kwargs):
                         default='',
                         nargs="?",
                         help="path for origin data")
+    parser.add_argument("--input_dim",
+                        type=int,
+                        default=7,
+                        help="input feature dimension (number of channels)")
+    parser.add_argument("--num_classes",
+                        type=int,
+                        default=1,
+                        help="num classes for downstream classifier (1 for binary BCELoss, >2 for multi-class CrossEntropyLoss)")
+    parser.add_argument("--alpha",
+                        type=float,
+                        default=1e-05,
+                        help="guidance strength for semantic guidance (set to 0 for no guidance)")
     return parser
 
 
@@ -395,28 +407,13 @@ if __name__ == "__main__":
     else:
         config.model['params']['cond_stage_config']['params'][
             'window'] = opt.seq_len
-        config.model['params']['cond_stage_config']['params'][
-            'num_latents'] = opt.num_latents
-
+        # Note: Don't override split_inv, use_prototype, etc. - use values from config file
+        # to match the training configuration
+        
         config.model['params']['pair_loss_flag'] = False
         config.model['params']['pair_loss_type'] = None
         config.model['params']['pair_loss_weight'] = 0
         nowname += f"_pl-None"
-
-        config.model['params']['cond_stage_config']['params'][
-            'split_inv'] = False
-        config.model['params']['unet_config']['params'][
-            'latent_unit'] = opt.num_latents
-
-        config.model['params']['cond_stage_config']['params'][
-            'use_prototype'] = False
-        config.model['params']['cond_stage_config']['params'][
-            'mask_assign'] = False
-        config.model['params']['cond_stage_config']['params'][
-            'hard_assign'] = False
-        config.model['params']['unet_config']['params']['inter_mask'] = False
-        config.model['params']['cond_stage_config']['params'][
-            'orth_proto'] = False
 
     nowname += f"_seed{opt.seed}"
     # nowname = nowname
@@ -452,7 +449,7 @@ if __name__ == "__main__":
             config.model["params"]["dis_loss_type"] = opt.dis_loss_type
         config.model["params"]["dis_weight"] = opt.dis_weight
 
-    alpha = 0.00001
+    alpha = opt.alpha
     save_path = opt.save_path_origin
 
     train_tuple = pd.read_pickle(opt.origin_data_path)
@@ -471,16 +468,20 @@ if __name__ == "__main__":
     print("#### Data Preparation Finished #####")
 
     downstream_model = RNNClassifier(
-        input_dim=7,
+        input_dim=opt.input_dim,
         hidden_dim=256,
         num_layers=2,
         rnn_type='gru',
-        num_classes=1,
+        num_classes=opt.num_classes,
     )
 
-    downstream_model.load_state_dict(
-        torch.load(opt.downstream_pth_path)['model_state'])
-    print('#### Downstream Model Loaded #####')
+    # Only load downstream model if using guidance
+    if alpha > 0:
+        downstream_model.load_state_dict(
+            torch.load(opt.downstream_pth_path)['model_state'])
+        print('#### Downstream Model Loaded #####')
+    else:
+        print('#### Running without guidance (alpha=0) #####')
 
     print("#### Start Generating Samples #####")
     for dataset in data.norm_train_dict:
@@ -492,11 +493,26 @@ if __name__ == "__main__":
         train_dataloader = DataLoader(train_dataset,
                                       batch_size=1,
                                       shuffle=False)
-        c = GradDotCalculator(downstream_model, train_dataloader,
-                              nn.BCEWithLogitsLoss(), alpha)
+        
+        # Create guidance calculator only if using guidance
+        if alpha > 0:
+            # Use appropriate loss function based on num_classes
+            # num_classes <= 2: BCEWithLogitsLoss (original behavior)
+            # num_classes > 2: CrossEntropyLoss (multi-class)
+            if opt.num_classes > 2:
+                criterion = nn.CrossEntropyLoss()
+            else:
+                criterion = nn.BCEWithLogitsLoss()
+            c = GradDotCalculator(downstream_model, train_dataloader,
+                                  criterion, alpha)
+            use_guidance = True
+        else:
+            c = None
+            use_guidance = False
+        
         generated_data_all = None
 
-        print(f"#### Start Generating Samples with alpha {alpha} #####")
+        print(f"#### Start Generating Samples with alpha {alpha}, guidance={use_guidance} #####")
         for label_sample, total_samples in tqdm(generation_nums_label.items()):
             label = torch.tensor([label_sample] * total_samples,
                                  device='cuda',
@@ -506,9 +522,9 @@ if __name__ == "__main__":
                                                       ddim=True,
                                                       ddim_steps=20,
                                                       eta=1.,
-                                                      sem_guide=True,
-                                                      sem_guide_type='GDC',
-                                                      label=label,
+                                                      sem_guide=use_guidance,
+                                                      sem_guide_type='GDC' if use_guidance else None,
+                                                      label=label if use_guidance else None,
                                                       GDCalculater=c)
             norm_samples = model.decode_first_stage(
                 samples).detach().cpu().numpy()
@@ -525,7 +541,7 @@ if __name__ == "__main__":
             np.full(count, label)
             for label, count in generation_nums_label.items()
         ])
-        tmp_name = f'synt_tardiff_noise_rnn_train_guidance_sc{alpha}'
+        tmp_name = f'synt_tardiff_noise_rnn_train_{"no_guidance" if not use_guidance else f"guidance_sc{alpha}"}'
         with open(save_path + '/'
                   f'{tmp_name}.pkl', 'wb') as f:
             #with open(save_path / f'alpha_search/{tmp_name}.pkl', 'wb') as f:
