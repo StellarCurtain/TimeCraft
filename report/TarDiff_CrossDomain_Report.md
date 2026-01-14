@@ -50,6 +50,20 @@ I developed a standardized 10-step pipeline:
 
 **Metrics:** AUROC, AUPRC, Accuracy
 
+### Diffusion Model Training
+
+The diffusion models were trained until convergence. Below are the training loss curves:
+
+**NASDAQ (50k steps):**
+
+![NASDAQ Diffusion Training Loss](nasdaq_diffusion_train_loss_50k.png)
+
+**Wafer (20k steps, early stopped at ~5k):**
+
+![Wafer Diffusion Training Loss](wafer_diffusion_train_loss_20k.png)
+
+Both models show rapid initial convergence followed by stable low loss values, indicating successful training.
+
 ---
 
 ## 4. Results
