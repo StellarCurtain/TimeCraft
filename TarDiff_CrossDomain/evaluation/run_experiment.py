@@ -24,14 +24,16 @@ from sklearn.metrics import roc_auc_score, average_precision_score, accuracy_sco
 
 
 class RNNClassifier(nn.Module):
-    def __init__(self, input_dim, hidden_dim=256, num_layers=2, rnn_type="gru", dropout=0.2):
+    def __init__(self, input_dim, hidden_dim=256, num_layers=2, rnn_type="gru", dropout=0.2, num_classes=2):
         super().__init__()
         RNN = nn.GRU if rnn_type == "gru" else nn.LSTM
         self.rnn = RNN(input_dim, hidden_dim, num_layers, batch_first=True, bidirectional=True, dropout=dropout if num_layers > 1 else 0)
-        self.fc = nn.Linear(hidden_dim * 2, 1)
+        output_dim = 1 if num_classes == 2 else num_classes
+        self.fc = nn.Linear(hidden_dim * 2, output_dim)
 
     def forward(self, x):
         out, _ = self.rnn(x)
+        # return logits
         return self.fc(out[:, -1, :]).squeeze(-1)
 
 
@@ -108,6 +110,11 @@ def train_and_evaluate(train_data, train_labels, val_path, test_path, args):
     val_data, val_labels = load_pickle(val_path)
     test_data, test_labels = load_pickle(test_path)
     
+    # Detect number of classes
+    all_labels = np.concatenate([train_labels, val_labels, test_labels])
+    num_classes = len(np.unique(all_labels))
+    print(f"Detected {num_classes} classes")
+
     train_ds = TimeSeriesDataset(train_data, train_labels)
     val_ds = TimeSeriesDataset(val_data, val_labels, (train_ds.mean, train_ds.std))
     test_ds = TimeSeriesDataset(test_data, test_labels, (train_ds.mean, train_ds.std))
@@ -116,8 +123,13 @@ def train_and_evaluate(train_data, train_labels, val_path, test_path, args):
     val_loader = DataLoader(val_ds, batch_size=args.batch_size)
     test_loader = DataLoader(test_ds, batch_size=args.batch_size)
     
-    model = RNNClassifier(args.input_dim, args.hidden_dim, args.num_layers, args.rnn_type).to(device)
-    criterion = nn.BCEWithLogitsLoss()
+    model = RNNClassifier(args.input_dim, args.hidden_dim, args.num_layers, args.rnn_type, num_classes=num_classes).to(device)
+    
+    if num_classes == 2:
+        criterion = nn.BCEWithLogitsLoss()
+    else:
+        criterion = nn.CrossEntropyLoss()
+        
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     
     best_auroc = 0
@@ -129,7 +141,13 @@ def train_and_evaluate(train_data, train_labels, val_path, test_path, args):
         for x, y in train_loader:
             x, y = x.to(device), y.to(device)
             optimizer.zero_grad()
-            loss = criterion(model(x), y.float())
+            logits = model(x)
+            
+            if num_classes == 2:
+                loss = criterion(logits, y.float())
+            else:
+                loss = criterion(logits, y.long())
+                
             loss.backward()
             optimizer.step()
         
@@ -137,12 +155,22 @@ def train_and_evaluate(train_data, train_labels, val_path, test_path, args):
         val_logits, val_labels_list = [], []
         with torch.no_grad():
             for x, y in val_loader:
-                val_logits.append(model(x.to(device)).cpu())
+                logits = model(x.to(device))
+                val_logits.append(logits.cpu())
                 val_labels_list.append(y)
         
-        val_probs = torch.sigmoid(torch.cat(val_logits)).numpy()
+        logits_cat = torch.cat(val_logits)
         val_labels_np = torch.cat(val_labels_list).numpy()
-        val_auroc = roc_auc_score(val_labels_np, val_probs)
+        
+        if num_classes == 2:
+            val_probs = torch.sigmoid(logits_cat).numpy()
+            val_auroc = roc_auc_score(val_labels_np, val_probs)
+        else:
+            val_probs = torch.softmax(logits_cat, dim=1).numpy()
+            try:
+                val_auroc = roc_auc_score(val_labels_np, val_probs, multi_class='ovr')
+            except ValueError:
+                val_auroc = 0.5  # Fallback if only one class present in batch
         
         print(f"Epoch {epoch:02d} | Val AUROC: {val_auroc:.4f}", end="")
         
@@ -158,7 +186,8 @@ def train_and_evaluate(train_data, train_labels, val_path, test_path, args):
                 print(f"Early stopping at epoch {epoch}")
                 break
     
-    model.load_state_dict(best_state)
+    if best_state is not None:
+        model.load_state_dict(best_state)
     model.eval()
     
     test_logits, test_labels_list = [], []
@@ -167,13 +196,34 @@ def train_and_evaluate(train_data, train_labels, val_path, test_path, args):
             test_logits.append(model(x.to(device)).cpu())
             test_labels_list.append(y)
     
-    probs = torch.sigmoid(torch.cat(test_logits)).numpy()
+    logits_cat = torch.cat(test_logits)
     labels_np = torch.cat(test_labels_list).numpy()
-    preds = (probs > 0.5).astype(int)
+    
+    if num_classes == 2:
+        probs = torch.sigmoid(logits_cat).numpy()
+        preds = (probs > 0.5).astype(int)
+        auroc = roc_auc_score(labels_np, probs)
+        auprc = average_precision_score(labels_np, probs)
+    else:
+        probs = torch.softmax(logits_cat, dim=1).numpy()
+        preds = np.argmax(probs, axis=1)
+        try:
+            auroc = roc_auc_score(labels_np, probs, multi_class='ovr')
+        except ValueError:
+            auroc = 0.5
+        # AUPRC for multi-class is tricky, usually macro/micro average. 
+        # Since average_precision_score handles multilabel but needs one-hot for multiclass,
+        # we'll simplify or skip AUPRC for multiclass to avoid complexity, or use macro average manually.
+        # For simplicity, let's use a weighted one-vs-rest approach if possible, or just set to 0.
+        # sklearn's average_precision_score works if y_true is binarized.
+        
+        from sklearn.preprocessing import label_binarize
+        y_onehot = label_binarize(labels_np, classes=np.arange(num_classes))
+        auprc = average_precision_score(y_onehot, probs, average="macro")
     
     metrics = {
-        "auroc": roc_auc_score(labels_np, probs),
-        "auprc": average_precision_score(labels_np, probs),
+        "auroc": auroc,
+        "auprc": auprc,
         "accuracy": accuracy_score(labels_np, preds),
     }
     

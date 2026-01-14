@@ -4,6 +4,7 @@
 #   bash run_evaluation.sh nasdaq 20 0
 #   bash run_evaluation.sh nasdaq 50 1e-05
 #   bash run_evaluation.sh wafer 50 1e-05 --skip-baseline
+#   bash run_evaluation.sh nasdaq_extreme 50 0.5
 
 DATASET=$1
 MS=$2
@@ -21,8 +22,8 @@ for arg in "$@"; do
     fi
 done
 
-if [ "$DATASET" != "nasdaq" ] && [ "$DATASET" != "wafer" ]; then
-    echo "Error: unsupported dataset '$DATASET', use nasdaq or wafer"
+if [ "$DATASET" != "nasdaq" ] && [ "$DATASET" != "wafer" ] && [ "$DATASET" != "nasdaq_extreme" ]; then
+    echo "Error: unsupported dataset '$DATASET', use nasdaq, wafer, or nasdaq_extreme"
     exit 1
 fi
 

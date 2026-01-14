@@ -3,6 +3,7 @@
 # Examples:
 #   bash run_quality_evaluation.sh nasdaq 20 1e-05
 #   bash run_quality_evaluation.sh wafer 20 100
+#   bash run_quality_evaluation.sh nasdaq_extreme 50 0.5
 
 DATASET=$1
 MS=$2
@@ -13,8 +14,8 @@ if [ -z "$DATASET" ] || [ -z "$MS" ] || [ -z "$ALPHA" ]; then
     exit 1
 fi
 
-if [ "$DATASET" != "nasdaq" ] && [ "$DATASET" != "wafer" ]; then
-    echo "Error: unsupported dataset '$DATASET', use nasdaq or wafer"
+if [ "$DATASET" != "nasdaq" ] && [ "$DATASET" != "wafer" ] && [ "$DATASET" != "nasdaq_extreme" ]; then
+    echo "Error: unsupported dataset '$DATASET', use nasdaq, wafer, or nasdaq_extreme"
     exit 1
 fi
 
@@ -62,4 +63,4 @@ else
     ALPHA_STR="${ALPHA_NORMALIZED}"
 fi
 
-python ../TarDiff_CrossDomain/evaluation/quality_evaluation.py -r "${DATA_DIR}/${REF_FILE}" -s0 "${DATA_DIR}/synt_tardiff_noise_rnn_train_no_guidance_ms${MS}k.pkl" -s1 "${DATA_DIR}/${SYNTH_FILE_GUIDANCE}" -o "quality_results_${DATASET}_ms${MS}k_alpha${ALPHA_STR}"
+python ../TarDiff_CrossDomain/evaluation/quality_evaluation.py -r "${DATA_DIR}/${REF_FILE}" -s0 "${DATA_DIR}/synt_tardiff_noise_rnn_train_no_guidance_ms${MS}k.pkl" -s1 "${DATA_DIR}/${SYNTH_FILE_GUIDANCE}" -a "${ALPHA}" -o "quality_results_${DATASET}_ms${MS}k_alpha${ALPHA_STR}"

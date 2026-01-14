@@ -68,6 +68,7 @@ def main():
     parser.add_argument('-r', '--real_data', type=str, required=True)
     parser.add_argument('-s0', '--synth_alpha0', type=str, required=True)
     parser.add_argument('-s1', '--synth_alpha1', type=str, required=True)
+    parser.add_argument('-a', '--alpha_val', type=str, default='1e-5', help="Alpha value for display")
     parser.add_argument('-o', '--output_dir', type=str, default='./quality_results')
     args = parser.parse_args()
     
@@ -78,9 +79,11 @@ def main():
     X_alpha0, y_alpha0 = load_data(args.synth_alpha0)
     X_alpha1, y_alpha1 = load_data(args.synth_alpha1)
     
-    print(f"Real: {X_real.shape}, α=0: {X_alpha0.shape}, α=1e-5: {X_alpha1.shape}")
+    label_s1 = f"α={args.alpha_val}"
     
-    for name, y in [("Real", y_real), ("α=0", y_alpha0), ("α=1e-5", y_alpha1)]:
+    print(f"Real: {X_real.shape}, α=0: {X_alpha0.shape}, {label_s1}: {X_alpha1.shape}")
+    
+    for name, y in [("Real", y_real), ("α=0", y_alpha0), (label_s1, y_alpha1)]:
         if y is not None:
             unique, counts = np.unique(y, return_counts=True)
             print(f"{name}: " + ", ".join([f"Class {l}: {c} ({c/len(y)*100:.1f}%)" for l, c in zip(unique, counts)]))
@@ -88,10 +91,10 @@ def main():
     mmd_alpha0 = compute_mmd(X_real, X_alpha0)
     mmd_alpha1 = compute_mmd(X_real, X_alpha1)
     
-    print(f"MMD(Real, α=0): {mmd_alpha0:.4f}, MMD(Real, α=1e-5): {mmd_alpha1:.4f}")
+    print(f"MMD(Real, α=0): {mmd_alpha0:.4f}, MMD(Real, {label_s1}): {mmd_alpha1:.4f}")
     
     with open(output_dir / 'metrics.json', 'w') as f:
-        json.dump({'mmd_alpha0': float(mmd_alpha0), 'mmd_alpha1': float(mmd_alpha1)}, f, indent=2)
+        json.dump({'mmd_alpha0': float(mmd_alpha0), f'mmd_{label_s1}': float(mmd_alpha1)}, f, indent=2)
 
 
 if __name__ == '__main__':
