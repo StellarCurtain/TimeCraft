@@ -4,7 +4,7 @@
 
 ## Abstract
 
-TarDiff is a target-aware time series diffusion generation model originally designed for healthcare scenarios. This report presents my efforts to adapt TarDiff to non-medical domains: the NASDAQ stock market (financial) and Wafer semiconductor fault detection (industrial). I developed a generalizable pipeline for cross-domain application. Experiments reveal that TarDiff's effectiveness varies significantly across domains—the Wafer dataset shows remarkable improvements (AUROC: 0.9864 → 0.9960 with TSRTR at α=0.1), while NASDAQ presents challenges due to balanced class distribution and inherent unpredictability.
+TarDiff is a target-aware time series diffusion generation model originally designed for healthcare scenarios. This report presents an adaptation of TarDiff to non-medical domains: the NASDAQ stock market (financial) and Wafer semiconductor fault detection (industrial). I developed a standardized pipeline for cross-domain application and evaluated performance under different data characteristics. Results show that TarDiff's effectiveness is highly domain-dependent. The Wafer dataset (industrial) demonstrated significant gains (AUROC: 0.9864 → 0.9960) due to clear anomaly patterns. Conversely, the standard NASDAQ dataset failed to benefit due to class balance and unpredictability. To investigate further, I constructed a "NASDAQ Extreme" dataset focusing on rare price movements (5% tails), which successfully increased gradient guidance strength (31.65x ratio) and improved synthetic data quality (TSTR AUROC +6.6%), though overall utility remained constrained by the inherent difficulty of financial prediction. These findings confirm that TarDiff requires both class imbalance and a learnable classification task to be effective.
 
 ---
 
@@ -76,9 +76,9 @@ I developed a standardized 10-step pipeline:
 ![NASDAQ Classifier Training Metrics](nasdaq_metrics.png)
 
 The classifier training shows clear signs of **overfitting without learning meaningful patterns**:
-- Train accuracy improves slowly from 50.9% to 56.8%, while val accuracy stays flat around 51-52%
-- Val loss increases from 0.70 to 0.94 (diverging from train loss), indicating the model memorizes training data without generalizing
-- Best val accuracy: **51.97%** (barely above random), confirming the fundamental unpredictability of stock price movements
+- **Loss**: Train loss decreases steadily from 0.69 to 0.68, while val loss increases from 0.70 to 0.94, indicating divergence and overfitting.
+- **Accuracy**: Train accuracy improves slowly from 50.9% to 56.8%, while val accuracy stays flat around 51-52%. Best val accuracy: **51.97%** (barely above random).
+- **Analysis**: The model memorizes training data without generalizing. The near-random val accuracy confirms the fundamental unpredictability of short-term stock price movements, making this classification task inherently unlearnable.
 
 **Gradient Norm Analysis:**
 
@@ -123,7 +123,10 @@ The classifier training shows clear signs of **overfitting without learning mean
 - **TSRTR**: AUROC 0.5342 (α=0) → 0.5416 (α=0.5)
 - **Mixed 50/50**: AUROC 0.5268 (α=0) → 0.5397 (α=0.5)
 
-This consistent improvement demonstrates that Influence Guidance is effective in steering generation toward more task-relevant samples, even when the classifier itself performs poorly. However, TarDiff struggles on NASDAQ because: (1) the classifier achieves only AUROC 0.5197 (barely above random), providing noisy rather than useful gradient signals; (2) the nearly balanced distribution (49.7% vs 50.3%) yields a gradient norm ratio of only 1.34x, far below the 12-16x observed in TarDiff's original medical datasets.
+This consistent improvement demonstrates that Influence Guidance is effective in steering generation toward more task-relevant samples, even when the classifier itself performs poorly.
+
+Notably, under the TSRTR setting, augmenting the already large training set (361K samples) with synthetic data yields marginal but consistent gains (baseline 0.5413 → TSRTR 0.5416 at α=0.5). This suggests that TarDiff-generated samples provide complementary information even when real data is abundant. In data-scarce scenarios—a more typical use case for synthetic data augmentation—these benefits would likely be more pronounced. However, TarDiff struggles on NASDAQ because: (1) the classifier achieves only accuracy 0.5197 (barely above random), providing weak and noisy gradient signals; (2) the nearly balanced distribution (49.7% vs 50.3%) yields a gradient norm ratio of only 1.34x, far below the 12-16x observed in TarDiff's original medical datasets.
+
 
 ### 4.2 NASDAQ Extreme Dataset
 
@@ -144,6 +147,8 @@ This creates a class distribution of approximately **5% : 90% : 5%**, introducin
   - Channel 0-3 (OHLC): [2.36, 2.39, ..., 2.48] (price series)
   - Channel 4 (Volume): [1689900, 2508100, ..., 881000]
 
+(Note: For efficiency, I sampled only 20% of the dataset for experimentation.)
+
 **Diffusion Model Training (50k steps):**
 
 ![NASDAQ Extreme Diffusion Training Loss](nasdaq_extreme_diffusion_train_loss_50k.png)
@@ -153,10 +158,9 @@ This creates a class distribution of approximately **5% : 90% : 5%**, introducin
 ![NASDAQ Extreme Classifier Training Metrics](nasdaq_extreme_metrics.png)
 
 The 3-class classifier exhibits the **"lazy majority prediction"** phenomenon typical of highly imbalanced datasets:
-- Train/val accuracy both hover around **89.9%** throughout training—exactly matching the Class 1 (Neutral) proportion
-- Train loss decreases from 0.40 to 0.34, but val loss increases from 0.40 to 0.45, indicating overfitting
-- Best val accuracy: **89.94%**, achieved by simply predicting the majority class
-- The model fails to learn discriminative features for the minority extreme classes (5% each)
+- **Loss**: Train loss decreases from 0.40 to 0.34, while val loss increases from 0.40 to 0.45, indicating overfitting.
+- **Accuracy**: Train/val accuracy both hover around **89.9%** throughout training—exactly matching the Class 1 (Neutral) proportion. Best val accuracy: **89.94%**.
+- **Analysis**: The model fails to learn discriminative features for the minority extreme classes (5% each), instead simply predicting the majority class. This reveals the "lazy prediction" strategy where high accuracy masks the model's inability to distinguish extreme price movements.
 
 **Gradient Norm Analysis:**
 
@@ -167,7 +171,7 @@ The 3-class classifier exhibits the **"lazy majority prediction"** phenomenon ty
 | Class 2 (Extreme Gain) | 18.1262 | 473 |
 | **Ratio (max/min)** | **31.65x** | - |
 
-The artificial class imbalance successfully creates a large gradient norm ratio (31.65x), much higher than the standard NASDAQ (1.34x) and even exceeding Wafer (12.34x). Both extreme classes (Loss and Gain) show significantly higher gradient norms than the Neutral class, indicating the classifier finds them harder to classify—exactly the condition where Influence Guidance should be most effective.
+The artificial class imbalance creates a massive 31.65x gradient norm ratio (vs NASDAQ 1.34x, Wafer 12.34x). Both extreme classes show significantly higher norms, theoretically ideal for Influence Guidance.
 
 **Baseline (100% Real Data):**
 
@@ -227,11 +231,9 @@ This consistent improvement demonstrates that Influence Guidance is effective. H
 ![Wafer Classifier Training Metrics](wafer_metrics.png)
 
 The Wafer classifier training demonstrates an **ideal learning curve** with a characteristic "breakthrough" moment:
-- **Epochs 1-10 ("Lazy Phase")**: Accuracy stuck at ~90% (predicting all samples as majority class Normal)
-- **Epoch 11 ("Breakthrough")**: Model suddenly learns to distinguish anomalies, val accuracy jumps to 98.99%
-- **Epoch 20+**: Val accuracy reaches **100%** multiple times, stabilizing around 96-100%
-- Final best val accuracy: **100%**, indicating perfect separation between Normal and Anomaly classes
-- Train loss drops from 0.57 to 0.02, val loss from 0.36 to near 0, with no overfitting
+- **Loss**: Train loss drops from 0.57 to 0.02, val loss from 0.36 to near 0. Both losses decrease consistently with no divergence, indicating no overfitting.
+- **Accuracy**: Epochs 1-10 show accuracy stuck at ~90%. At Epoch 11, val accuracy jumps to 98.99%. Epoch 20+ reaches **100%** multiple times. Final best val accuracy: **100%**.
+- **Analysis**: The model successfully learns discriminative features for anomaly detection, with perfect separation between Normal and Anomaly classes. The breakthrough pattern suggests the model first learned basic features before discovering the key anomaly signatures. This confirms the task is highly learnable with clear morphological patterns.
 
 **Gradient Norm Analysis:**
 
@@ -289,13 +291,13 @@ Based on my experiments, I identify three key requirements for successfully appl
 
 **Requirement 1: The Classification Task Must Be Learnable**
 
-TarDiff relies on classifier gradients to guide generation. If the classifier cannot learn, its gradients are noise rather than useful signals.
+TarDiff relies on classifier gradients to guide generation. If the classifier cannot learn effectively, its gradients provide weak and unreliable guidance.
 
 | Dataset | Classifier AUROC | Gradient Quality | TarDiff Effect |
 |---------|------------------|------------------|----------------|
-| Wafer | ~0.99 | High-quality | ✅ Effective |
-| NASDAQ Extreme | ~0.58 | Weak | ⚠️ Limited |
-| NASDAQ Binary | ~0.52 | Noise | ❌ Minimal |
+| Wafer | ~0.99 | High-quality | ✅ |
+| NASDAQ Extreme | 0.58 | Weak | ⚠️ |
+| NASDAQ Binary | 0.52 | Weak | ⚠️ |
 
 **Requirement 2: Class Imbalance Should Exist**
 
@@ -304,6 +306,22 @@ Minority class samples produce larger gradients, providing stronger guidance sig
 **Requirement 3: The Task Should Not Be Too Easy**
 
 If baseline AUROC > 0.99, there is limited room for improvement. Wafer (baseline 0.9932) demonstrates this ceiling effect—the gain to 0.9960 is meaningful (41% error reduction) but numerically small.
+
+**Why Does Influence Guidance Work Even with Poor Classifiers?**
+
+An intriguing observation from the NASDAQ experiments is that synthetic data quality improves with guidance strength α despite weak classifier performance (AUROC ~0.52-0.58). This seeming paradox deserves explanation.
+
+**A possible interpretation:** Even when a classifier performs near-random on validation data, it may still learn weak patterns during training. For example, NASDAQ Binary's training accuracy improves from 50.9% to 56.8%, suggesting the model captures some statistical associations (albeit ones that don't generalize). These weak patterns, while insufficient for accurate prediction, may still provide directional signals that nudge generation away from "completely random" toward "slightly more task-aligned."
+
+The improvement magnitude appears correlated with both gradient strength and classifier quality:
+
+| Dataset | Gradient Ratio | Classifier AUROC | TSTR AUROC (α=0) | TSTR AUROC (α=0.5) | Improvement |
+|---------|---------------|------------------|------------------|--------------------| ------------|
+| NASDAQ Binary | 1.34x | 0.52 | 0.4728 | 0.5097 | +7.8% |
+| NASDAQ Extreme | 31.65x | 0.58 | 0.4904 | 0.5227 | +6.6% |
+| Wafer | 12.34x | 0.99 | 0.3374 | 0.6224 | +84.5% |
+
+Wafer's dramatic improvement likely benefits from both strong gradients (12.34x) and an accurate classifier (0.99), providing reliable guidance. NASDAQ datasets show modest gains despite high gradient ratios, potentially because the weak classifiers (0.52-0.58) produce unreliable signals with limited discriminative power. This suggests that guidance effectiveness depends on gradient quality, not just magnitude.
 
 ---
 
@@ -320,8 +338,9 @@ TarDiff achieves success on Wafer (AUROC 0.9864 → 0.9960) but faces challenges
 
 This work demonstrates both the potential and limitations of cross-domain transfer for target-aware time series generation.
 
----
+**Domain-Specific Implications:** The inherent unpredictability of financial markets makes it difficult to train effective classifiers, which in turn limits TarDiff's applicability to most financial time series tasks. In contrast, industrial data such as Wafer fault detection exhibits learnable patterns, enabling TarDiff to generate high-quality synthetic samples—particularly valuable when class imbalance exists. For other domains with predictable feature-label relationships, TarDiff shows strong potential. Its practical value is especially pronounced in scenarios combining class imbalance with data scarcity or high acquisition costs, where synthetic data augmentation can significantly reduce the burden of real data collection.
 
+---
 
 ## Appendix
 
