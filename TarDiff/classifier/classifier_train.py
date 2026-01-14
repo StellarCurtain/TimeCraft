@@ -6,7 +6,10 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from .model import RNNClassifier
+try:
+    from .model import RNNClassifier
+except ImportError:
+    from model import RNNClassifier
 import numpy as np
 import torch
 from torch import nn
