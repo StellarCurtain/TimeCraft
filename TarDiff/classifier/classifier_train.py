@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from model import RNNClassifier
+from .model import RNNClassifier
 import numpy as np
 import torch
 from torch import nn

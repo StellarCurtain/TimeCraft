@@ -136,7 +136,18 @@ This creates a class distribution of approximately **5% : 90% : 5%**, introducin
 
 ![NASDAQ Extreme Diffusion Training Loss](nasdaq_extreme_diffusion_train_loss_50k.png)
 
-*Results pending...*
+**Gradient Norm Analysis:**
+
+| Class | Mean Gradient Norm | Sample Count |
+|-------|-------------------|--------------|
+| Class 0 (Extreme Loss) | 17.5379 | 496 |
+| Class 1 (Neutral) | 0.5727 | 9,031 |
+| Class 2 (Extreme Gain) | 18.1262 | 473 |
+| **Ratio (max/min)** | **31.65x** | - |
+
+The artificial class imbalance successfully creates a large gradient norm ratio (31.65x), much higher than the standard NASDAQ (1.34x) and even exceeding Wafer (12.34x). Both extreme classes (Loss and Gain) show significantly higher gradient norms than the Neutral class, indicating the classifier finds them harder to classify—exactly the condition where Influence Guidance should be most effective.
+
+*Downstream evaluation results pending...*
 
 ### 4.3 Wafer Semiconductor Dataset
 
