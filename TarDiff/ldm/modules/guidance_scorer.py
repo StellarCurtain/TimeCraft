@@ -431,12 +431,12 @@ class GradDotCalculator:
                 if p.grad is not None:
                     grad_sum[i] += p.grad.detach()
         
-        # Filter out parameters with zero gradients (frozen layers)
-        filtered = [(i, g) for i, g in enumerate(grad_sum) if g.abs().sum() > 0]
-        if not filtered:
+        # Store which parameters have valid gradients (for consistency with compute_gradient)
+        self.valid_param_indices = [i for i, g in enumerate(grad_sum) if g.abs().sum() > 0]
+        if not self.valid_param_indices:
             raise ValueError("No parameter received gradient!")
-        _, filtered_grads = zip(*filtered)
         
+        filtered_grads = [grad_sum[i] for i in self.valid_param_indices]
         grad_sum = self._normalize_gradients(filtered_grads)
         torch.cuda.empty_cache()
         return grad_sum
@@ -483,9 +483,8 @@ class GradDotCalculator:
                                          self.model.parameters(),
                                          create_graph=True)
 
-        filtered = [(p, g) for p, g in zip(self.model.parameters(), test_grads)
-                    if g is not None]
-        _, test_grads = zip(*filtered)
+        # Use the same parameter indices as in _compute_train_grad_sum
+        test_grads = [test_grads[i] for i in self.valid_param_indices]
         test_grads = self._normalize_gradients(test_grads)
 
         total_dot = sum((tg * cg).sum()

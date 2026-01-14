@@ -513,24 +513,52 @@ if __name__ == "__main__":
         generated_data_all = None
 
         print(f"#### Start Generating Samples with alpha {alpha}, guidance={use_guidance} #####")
+        # Use smaller batch size to avoid OOM during generation
+        gen_batch_size = opt.batch_size  # Use the same batch size as training (default 256)
+        
         for label_sample, total_samples in tqdm(generation_nums_label.items()):
-            label = torch.tensor([label_sample] * total_samples,
-                                 device='cuda',
-                                 dtype=torch.long)
-            samples, z_denoise_row = model.sample_log(cond=None,
-                                                      batch_size=total_samples,
-                                                      ddim=True,
-                                                      ddim_steps=20,
-                                                      eta=1.,
-                                                      sem_guide=use_guidance,
-                                                      sem_guide_type='GDC' if use_guidance else None,
-                                                      label=label if use_guidance else None,
-                                                      GDCalculater=c)
-            norm_samples = model.decode_first_stage(
-                samples).detach().cpu().numpy()
-            inv_samples = data.inverse_transform(norm_samples,
-                                                 data_name=dataset)
-            generated_data = np.array(inv_samples).transpose(0, 2, 1)
+            print(f"Generating {total_samples} samples for label {label_sample}")
+            
+            # Generate in batches
+            num_batches = (total_samples + gen_batch_size - 1) // gen_batch_size
+            label_generated_data = []
+            
+            for batch_idx in tqdm(range(num_batches), desc=f"Label {label_sample}", leave=False):
+                start_idx = batch_idx * gen_batch_size
+                end_idx = min(start_idx + gen_batch_size, total_samples)
+                current_batch_size = end_idx - start_idx
+                
+                label = torch.tensor([label_sample] * current_batch_size,
+                                     device='cuda',
+                                     dtype=torch.long)
+                
+                # Generate conditioning from random noise
+                dummy_x = torch.randn(current_batch_size, model.channels, model.image_size, device='cuda')
+                with torch.no_grad():
+                    cond = model.get_learned_conditioning(dummy_x)
+                
+                samples, z_denoise_row = model.sample_log(cond=cond,
+                                                          batch_size=current_batch_size,
+                                                          ddim=True,
+                                                          ddim_steps=20,
+                                                          eta=1.,
+                                                          sem_guide=use_guidance,
+                                                          sem_guide_type='GDC' if use_guidance else None,
+                                                          label=label if use_guidance else None,
+                                                          GDCalculater=c)
+                norm_samples = model.decode_first_stage(
+                    samples).detach().cpu().numpy()
+                inv_samples = data.inverse_transform(norm_samples,
+                                                     data_name=dataset)
+                batch_generated_data = np.array(inv_samples).transpose(0, 2, 1)
+                label_generated_data.append(batch_generated_data)
+                
+                # Clear GPU memory between batches
+                del samples, z_denoise_row, norm_samples
+                torch.cuda.empty_cache()
+            
+            # Concatenate all batches for this label
+            generated_data = np.concatenate(label_generated_data, axis=0)
             if generated_data_all is None:
                 generated_data_all = generated_data
             else:
@@ -541,7 +569,16 @@ if __name__ == "__main__":
             np.full(count, label)
             for label, count in generation_nums_label.items()
         ])
-        tmp_name = f'synt_tardiff_noise_rnn_train_{"no_guidance" if not use_guidance else f"guidance_sc{alpha}"}'
+        # Extract training steps (e.g., 50 from "ms50k") from checkpoint path
+        import re
+        ckpt_match = re.search(r'ms(\d+)k', opt.gen_ckpt_path)
+        train_steps_str = f"_ms{ckpt_match.group(1)}k" if ckpt_match else ""
+        
+        tmp_name = f'synt_tardiff_noise_rnn_train_{"no_guidance" if not use_guidance else f"guidance_sc{alpha}"}{train_steps_str}'
+        
+        # Create output directory if it doesn't exist
+        os.makedirs(save_path, exist_ok=True)
+        
         with open(save_path + '/'
                   f'{tmp_name}.pkl', 'wb') as f:
             #with open(save_path / f'alpha_search/{tmp_name}.pkl', 'wb') as f:
