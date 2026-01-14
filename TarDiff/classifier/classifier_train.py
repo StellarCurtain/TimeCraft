@@ -182,7 +182,7 @@ def main(args):
             best_val = va_acc
             print(f"New best val acc: {best_val:.4f} -> saving model")
             torch.save({"model_state": model.state_dict()},
-                       Path(args.ckpt_dir) / "best_model.pt")
+                       Path(args.ckpt_dir) / "classifier_best.pt")
     print(f"Train Finished. Best val acc: {best_val:.4f}")
 
 

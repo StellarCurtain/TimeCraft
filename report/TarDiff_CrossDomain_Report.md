@@ -32,7 +32,7 @@ I developed a standardized 10-step pipeline:
 
 1. Environment Setup → 2. Data Download → 3. Data Preprocessing → 4. Config Creation → 5. Diffusion Training → 6. Classifier Training → 7. Gradient Norm Analysis → 8. Influence Guidance Generation → 9. Quality Evaluation → 10. Downstream Evaluation
 
-**Data Format:** pickle files with `(data, labels)` tuple, where `data` shape is `(N, C, T)`.
+**Data Format:** processed pickle files with `(data, labels)` tuple, where `data` shape is `(N, C, T)`.
 
 ---
 
