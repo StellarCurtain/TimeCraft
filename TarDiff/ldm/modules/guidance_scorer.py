@@ -392,9 +392,9 @@ class GradDotCalculator:
 
     def _compute_train_grad_sum(self, train_loader):
         """
-        Accumulate the loss over the *whole* training set, then take a single
-        backward pass to obtain Σ∇θ L.  This treats every sample as if it were
-        in one giant batch.  Beware of memory usage on very large datasets.
+        Accumulate gradients over the training set by doing per-sample backward
+        passes and summing the gradients. This avoids building a huge computation
+        graph that causes OOM on large datasets.
 
         Returns
         -------
@@ -402,8 +402,12 @@ class GradDotCalculator:
             Normalised gradient sum, one tensor per trainable parameter.
         """
         params = list(self.model.parameters())
-        total_loss = torch.tensor(0.0, device=self.device)
-
+        
+        # Initialize gradient accumulators
+        grad_sum = [torch.zeros_like(p) for p in params]
+        
+        # Need train mode for RNN backward with cuDNN
+        self.model.train()
         for inputs, labels in tqdm(train_loader,
                                    desc="Compute Train Grad Sum"):
             inputs = inputs.to(self.device)
@@ -412,13 +416,27 @@ class GradDotCalculator:
                 labels = labels.to(self.device).to(torch.float32)
             else:
                 labels = labels.to(self.device).to(torch.long)
+            
+            # Zero gradients
+            self.model.zero_grad()
+            
             outputs = self.model(inputs)
             loss = self.criterion(outputs, labels)
-            total_loss += loss
-
-        grad_sum = torch.autograd.grad(total_loss, params, allow_unused=True)
-        filtered = [(p, g) for p, g in zip(params, grad_sum) if g is not None]
+            
+            # Backward for this sample
+            loss.backward()
+            
+            # Accumulate gradients
+            for i, p in enumerate(params):
+                if p.grad is not None:
+                    grad_sum[i] += p.grad.detach()
+        
+        # Filter out parameters with zero gradients (frozen layers)
+        filtered = [(i, g) for i, g in enumerate(grad_sum) if g.abs().sum() > 0]
+        if not filtered:
+            raise ValueError("No parameter received gradient!")
         _, filtered_grads = zip(*filtered)
+        
         grad_sum = self._normalize_gradients(filtered_grads)
         torch.cuda.empty_cache()
         return grad_sum
