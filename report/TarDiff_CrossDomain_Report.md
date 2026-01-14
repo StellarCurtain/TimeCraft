@@ -50,25 +50,26 @@ I developed a standardized 10-step pipeline:
 
 **Metrics:** AUROC, AUPRC, Accuracy
 
-### Diffusion Model Training
-
-The diffusion models were trained until convergence. Below are the training loss curves:
-
-**NASDAQ (50k steps):**
-
-![NASDAQ Diffusion Training Loss](nasdaq_diffusion_train_loss_50k.png)
-
-**Wafer (20k steps, early stopped at ~5k):**
-
-![Wafer Diffusion Training Loss](wafer_diffusion_train_loss_20k.png)
-
-Both models show rapid initial convergence followed by stable low loss values, indicating successful training.
-
 ---
 
 ## 4. Results
 
 ### 4.1 NASDAQ Stock Dataset
+
+**Data Overview:**
+- Samples: 361,501 | Shape: (N, 5, 24) | Classes: 2
+- Label distribution: Class 0 (Decrease): 49.70%, Class 1 (Increase): 50.30%
+- Sample example (label=1): 
+  - Channel 0-3 (OHLC): [186.55, 188.31, ..., 169.70] (price series)
+  - Channel 4 (Volume): [958700, 1439700, ..., 1740700]
+
+**Labeling Strategy:**
+- Compute the 5-day return rate for each sample: `return = (close[t+5] - close[t]) / close[t]`
+- Binary classification: Class 1 (Increase) if return > 0, else Class 0 (Decrease)
+
+**Diffusion Model Training (50k steps):**
+
+![NASDAQ Diffusion Training Loss](nasdaq_diffusion_train_loss_50k.png)
 
 **Gradient Norm Analysis:**
 
@@ -112,9 +113,43 @@ Both models show rapid initial convergence followed by stable low loss values, i
 
 **Challenges:** Poor baseline performance (AUROC ~0.54, barely above random), high noise in financial data, similar class distributions, weak classifier guidance.
 
-**Future Directions:** Create artificial class imbalance by focusing on extreme price movements (>5% gain/loss).
+### 4.2 NASDAQ Extreme Dataset
 
-### 4.2 Wafer Semiconductor Dataset
+To address the class balance issue in the standard NASDAQ dataset, we created an "extreme" variant by redefining the classification task. Instead of binary up/down prediction, we focus on detecting **extreme price movements**.
+
+**Labeling Strategy:** Using the same 5-day return rate, we apply percentile-based thresholds:
+- Calculate the 5th and 95th percentile thresholds across all returns
+- **Class 0 (Extreme Loss)**: Bottom 5% returns (large price drops)
+- **Class 1 (Neutral)**: Middle 90% returns (normal fluctuations)  
+- **Class 2 (Extreme Gain)**: Top 5% returns (large price increases)
+
+This creates a class distribution of approximately **5% : 90% : 5%**, introducing significant class imbalance similar to the medical datasets where TarDiff excels. The hypothesis is that the extreme price movement patterns (both gains and losses) are harder to classify, leading to higher gradient norms for minority classes and thus more effective Influence Guidance.
+
+**Data Overview:**
+- Samples: 360,328 | Shape: (N, 5, 24) | Classes: 3
+- Label distribution: Class 0 (Loss): 4.98%, Class 1 (Neutral): 90.03%, Class 2 (Gain): 4.99%
+- Sample example (label=1, Neutral):
+  - Channel 0-3 (OHLC): [2.36, 2.39, ..., 2.48] (price series)
+  - Channel 4 (Volume): [1689900, 2508100, ..., 881000]
+
+**Diffusion Model Training (50k steps):**
+
+![NASDAQ Extreme Diffusion Training Loss](nasdaq_extreme_diffusion_train_loss_50k.png)
+
+*Results pending...*
+
+### 4.3 Wafer Semiconductor Dataset
+
+**Data Overview:**
+- Samples: 901 | Shape: (N, 1, 24) | Classes: 2
+- Label distribution: Class 0 (Normal): 90.23%, Class 1 (Anomaly): 9.77%
+- Data range: [-2.86, 7.17], mean=-0.02, std=0.97 (normalized)
+- Sample example (label=0, Normal):
+  - Channel 0: [-1.14, -1.14, -1.14, 0.94, ..., -1.14, -1.14, -1.14, -1.14]
+
+**Diffusion Model Training (20k steps, early stopped at ~5k):**
+
+![Wafer Diffusion Training Loss](wafer_diffusion_train_loss_20k.png)
 
 **Gradient Norm Analysis:**
 
@@ -167,9 +202,14 @@ Both models show rapid initial convergence followed by stable low loss values, i
 ## 5. Discussion
 
 **Key Factors for TarDiff Effectiveness:**
-1. **Class Imbalance**: High gradient norm ratio (Wafer: 12.34x vs NASDAQ: 1.34x)
-2. **Baseline Classifier Quality**: Classifier with AUROC > 0.7 is needed for effective guidance
-3. **Data Predictability**: Deterministic patterns benefit more than stochastic data
+
+1. **Class Imbalance**: TarDiff's Influence Guidance relies on gradient signals from a downstream classifier. When class imbalance exists, minority class samples are harder to classify, producing larger gradients that provide stronger guidance. Our experiments confirm this: Wafer achieves a gradient norm ratio of 12.34x (minority/majority), while NASDAQ only reaches 1.34x.
+
+2. **Domain-Specific Learnability**: The classifier must be able to learn meaningful discriminative patterns from the data. This varies significantly across domains:
+   - **Industrial data (Wafer)**: Anomalous wafers exhibit distinct waveform patterns (e.g., sudden spikes, abnormal shapes). The classifier achieves AUROC 0.99, providing reliable gradient signals.
+   - **Financial data (NASDAQ)**: Stock price movements are inherently noisy and largely stochastic. Future returns are notoriously difficult to predict from historical prices alone (weak-form market efficiency). The classifier only achieves AUROC ~0.54 (barely above random), meaning its gradients are essentially noise rather than useful guidance.
+
+**Cross-Domain Implications**: TarDiff is most effective when (1) the target domain has class imbalance, and (2) the classification task is learnable. Domains with high noise and unpredictable patterns (e.g., financial markets) pose fundamental challenges that cannot be overcome by synthetic data augmentation alone.
 
 
 ---

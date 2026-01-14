@@ -24,7 +24,7 @@ python train_main.py --base configs/base/nasdaq_extreme_base.yaml --name nasdaq_
 
 ## 5. Train Downstream Classifier
 ```bash
-python classifier/classifier_train.py --num_classes 2 --rnn_type gru --hidden_dim 256 --train_data ../TarDiff_CrossDomain/data/processed/nasdaq_extreme/train_tuple.pkl --val_data ../TarDiff_CrossDomain/data/processed/nasdaq_extreme/val_tuple.pkl --ckpt_dir ../TarDiff_CrossDomain/models/nasdaq_extreme_base --input_dim 5
+python classifier/classifier_train.py --num_classes 3 --rnn_type gru --hidden_dim 256 --train_data ../TarDiff_CrossDomain/data/processed/nasdaq_extreme/train_tuple.pkl --val_data ../TarDiff_CrossDomain/data/processed/nasdaq_extreme/val_tuple.pkl --ckpt_dir ../TarDiff_CrossDomain/models/nasdaq_extreme_base --input_dim 5
 ```
 
 ## 6. Compute Gradient Norm Statistics (Analyze class imbalance)

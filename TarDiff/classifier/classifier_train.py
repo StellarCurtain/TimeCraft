@@ -147,7 +147,7 @@ def main(args):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = RNNClassifier(
-        input_dim=7,
+        input_dim=args.input_dim,
         hidden_dim=args.hidden_dim,
         num_layers=args.num_layers,
         rnn_type=args.rnn_type,
@@ -193,6 +193,7 @@ def main(args):
 if __name__ == "__main__":
     p = argparse.ArgumentParser(
         description="Bidirectional LSTM/GRU time‑series classifier")
+    p.add_argument("--input_dim", type=int, default=7, help="number of input features")
     p.add_argument("--hidden_dim", type=int, default=128)
     p.add_argument("--num_layers", type=int, default=2)
     p.add_argument("--rnn_type", choices=["lstm", "gru"], default="lstm")
